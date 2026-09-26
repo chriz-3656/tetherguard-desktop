@@ -91,14 +91,25 @@ class GuardianController:
         self.detectors.clear()
         
         if "usb" in self.config.enabled_detectors:
-            # We import here to avoid platform issues if missing
             from tetherguard.detectors.usb import WindowsUSBDetector
             detector = WindowsUSBDetector(self.config.device_id)
             detector.set_callback(self.handle_incident)
             detector.start()
             self.detectors.append(detector)
             
-        # Add input/filesystem detectors here as needed
+        if "input" in self.config.enabled_detectors:
+            from tetherguard.detectors.input import InputDetector
+            detector = InputDetector(self.config.device_id)
+            detector.set_callback(self.handle_incident)
+            detector.start()
+            self.detectors.append(detector)
+            
+        if "file" in self.config.enabled_detectors:
+            from tetherguard.detectors.file_monitor import FileMonitorDetector
+            detector = FileMonitorDetector(self.config.device_id)
+            detector.set_callback(self.handle_incident)
+            detector.start()
+            self.detectors.append(detector)
 
     def _stop_detectors(self):
         for detector in self.detectors:

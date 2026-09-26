@@ -9,7 +9,7 @@ class TetherConfig:
     device_id: str = ""
     relay_endpoint: str = "ws://localhost:8080/ws"
     paired_device_public_key: str = ""
-    enabled_detectors: List[str] = field(default_factory=lambda: ["usb", "input"])
+    enabled_detectors: List[str] = field(default_factory=lambda: ["usb", "input", "file"])
     evidence_capture_enabled: bool = True
     sensitive_directories: List[str] = field(default_factory=list)
     reconnect_interval_sec: int = 5
