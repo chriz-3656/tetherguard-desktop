@@ -24,8 +24,8 @@ async def handler(websocket):
         connected_clients.remove(websocket)
 
 async def main():
-    print("Starting WebSocket Relay Server on ws://localhost:8080")
-    async with websockets.serve(handler, "localhost", 8080):
+    print("Starting WebSocket Relay Server on ws://0.0.0.0:8080")
+    async with websockets.serve(handler, "0.0.0.0", 8080):
         await asyncio.Future()  # run forever
 
 if __name__ == "__main__":

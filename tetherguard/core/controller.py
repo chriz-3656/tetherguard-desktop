@@ -22,7 +22,8 @@ class GuardianController:
         
         self.mode = GuardianMode()
         self.db = Database(data_dir / "incidents.db")
-        self.auth = AuthManager(self.config.private_key_pem, self.config.public_key_pem)
+        # We now use the private_key_pem field to store the shared symmetric token
+        self.auth = AuthManager(self.config.private_key_pem)
         
         # Responders
         self.lock_resp = LockResponder()

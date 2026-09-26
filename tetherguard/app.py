@@ -18,10 +18,26 @@ def main():
     # Initialize controller
     controller = GuardianController(config_path, data_dir)
     
+    # Auto-detect local IP so the phone can connect (localhost won't work on the phone)
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        
+        # Update endpoint if it's still using localhost
+        if "localhost" in controller.config.relay_endpoint or "127.0.0.1" in controller.config.relay_endpoint:
+            controller.config.relay_endpoint = f"ws://{local_ip}:8080"
+    except Exception:
+        pass
+
     # Ensure device ID exists
     if not controller.config.device_id:
         controller.config.device_id = f"TG-{str(uuid.uuid4())[:8]}"
-        controller.config.save(config_path)
+        
+    # Save config (captures IP change or new ID)
+    controller.config.save(config_path)
     
     controller.start()
     
