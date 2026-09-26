@@ -56,7 +56,14 @@ To fully support Linux:
 1. Implement a `LinuxUSBDetector` in `detectors/usb.py` using `pyudev`.
 2. Enhance `responders/lock.py` to handle different desktop environments (GNOME, KDE) appropriately.
 
-## ?? Hackathon Challenges & Solutions
+## ✨ Latest Features (v1.0 Hackathon Release)
+- 🛡️ **Multi-Layered Tamper Sensors:** Integrated real-time WMI USB detection, pynput keyboard/mouse activity sniffing, and watchdog secure file system monitoring.
+- 📡 **Cross-Network Auto-Bypass:** The Desktop Agent intelligently auto-detects its own LAN IP and injects it into the QR code URI, allowing external phones to successfully route to it over Wi-Fi.
+- 🔒 **Symmetric Cryptography Overhaul:** Swapped legacy RSA architecture for a unified, ultra-fast 32-byte HMAC-SHA256 token exchange for perfect mathematical signatures.
+- 🎭 **Presentation Safe Mode:** Replaced dangerous SHUTDOWN system calls with a lightweight, system-modal ctypes GUI warning that perfectly simulates a shutdown intercept without crashing or interrupting the hackathon demo.
+- 📱 **Android UI Alignment:** Updated Android ViewModel schemas to precisely match Python sensor telemetry (e.g. FILE_MODIFIED, INPUT_ATTEMPT), generating real-time color-coded alerts on the mobile dashboard.
+
+## 🚀 Hackathon Challenges & Solutions
 
 During the hackathon, we encountered and solved several complex networking and cryptographic challenges:
 
