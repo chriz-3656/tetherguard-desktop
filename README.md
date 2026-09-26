@@ -2,6 +2,11 @@
 
 TetherGuard is a hackathon-ready physical tamper and endpoint integrity monitoring agent.
 
+## 🔗 Component Repositories
+TetherGuard is a two-part system. You must run both components for the system to work:
+- 📱 **Android App (Companion Center):** [chriz-3656/tetherguard](https://github.com/chriz-3656/tetherguard)
+- 🖥️ **Desktop Agent (Host Daemon):** [chriz-3656/tetherguard-desktop](https://github.com/chriz-3656/tetherguard-desktop)
+
 ## Architecture
 
 TetherGuard is designed with separation of concerns:
