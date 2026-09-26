@@ -216,10 +216,25 @@ class SettingsTab(QWidget):
         
     def show_qr(self):
         qr_path = self.controller.data_dir / "pairing.png"
+        
+        # Dynamically determine the LAN IP so the phone can reach this computer
+        # We do this here so we don't mess up the desktop agent's own localhost connection!
+        display_endpoint = self.controller.config.relay_endpoint
+        if "localhost" in display_endpoint or "127.0.0.1" in display_endpoint:
+            import socket
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                local_ip = s.getsockname()[0]
+                s.close()
+                display_endpoint = display_endpoint.replace("localhost", local_ip).replace("127.0.0.1", local_ip)
+            except Exception:
+                pass
+                
         generate_pairing_qr(
             self.controller.config.device_id,
             self.controller.config.public_key_pem,
-            self.controller.config.relay_endpoint,
+            display_endpoint,
             qr_path
         )
         pixmap = QPixmap(str(qr_path))
