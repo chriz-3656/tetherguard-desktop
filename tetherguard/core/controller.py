@@ -120,18 +120,21 @@ class GuardianController:
         # 1. Local incident record
         self.db.save_incident(event)
         
-        # Only respond if active
-        if self.mode.state == GuardianState.ACTIVE:
-            self.mode.trigger()
-            self._notify_state()
+        # Only respond if active or triggered
+        if self.mode.state in [GuardianState.ACTIVE, GuardianState.TRIGGERED]:
+            is_first_trigger = (self.mode.state == GuardianState.ACTIVE)
+            if is_first_trigger:
+                self.mode.trigger()
+                self._notify_state()
             
             # 2. Attempt evidence capture
             evidence_b64 = None
-            if self.config.evidence_capture_enabled:
+            if self.config.evidence_capture_enabled and is_first_trigger:
                 evidence_b64 = self.camera_resp.capture()
                 
             # 3. Lock workstation immediately
-            self.lock_resp.execute()
+            if is_first_trigger:
+                self.lock_resp.execute()
             
             # 4. Enqueue to relay
             payload = {
