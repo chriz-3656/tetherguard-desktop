@@ -190,28 +190,32 @@ class GuardianController:
             return
             
         if data.get("device_id") != self.config.device_id:
+            print(f"Command rejected: Device ID mismatch. Got {data.get('device_id')}, expected {self.config.device_id}")
             return
             
-        # Android app sends fields directly at the root, not inside 'payload'
+        # Android app sends fields directly at the root
         command = data.get("command", "")
         request_id = data.get("request_id", "")
         timestamp = data.get("timestamp", 0)
         signature = data.get("signature", "")
         
-        # Verify
+        print(f"\n[DEBUG] Incoming command received: {command}")
+        print(f"[DEBUG] Request ID: {request_id} | Timestamp: {timestamp}")
+        
+        # Verify Signature
         if not self.auth.verify_command_signature(command, self.config.device_id, request_id, timestamp, signature):
-            print("Invalid signature on command.")
+            print(f"[ERROR] Invalid HMAC signature on command '{command}'. Rejected.")
             return
             
-        print(f"Authenticated command received: {command}")
+        print(f"[SUCCESS] Authenticated command verified: {command}")
         
         if command == "LOCK":
             self.lock_resp.execute()
         elif command == "SHUTDOWN":
             self.shutdown_resp.execute()
-        elif command == "GUARDIAN_ON":
+        elif command == "ARM" or command == "GUARDIAN_ON":
             self.arm()
-        elif command == "GUARDIAN_OFF":
+        elif command == "DISARM" or command == "GUARDIAN_OFF":
             self.disarm()
         elif command == "PING":
             pass # Implement pong if needed

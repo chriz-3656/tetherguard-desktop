@@ -40,6 +40,15 @@ class AuthManager:
             # Android uses Base64.NO_WRAP to encode the signature
             signature = base64.b64decode(signature_b64)
             expected_signature = hmac.new(self.shared_secret, payload_to_sign, hashlib.sha256).digest()
-            return hmac.compare_digest(expected_signature, signature)
-        except Exception:
+            
+            if hmac.compare_digest(expected_signature, signature):
+                return True
+            else:
+                print(f"[DEBUG HMAC] Signature mismatch.")
+                print(f" -> String hashed: {payload_to_sign.decode()}")
+                print(f" -> Expected: {base64.b64encode(expected_signature).decode()}")
+                print(f" -> Received: {signature_b64}")
+                return False
+        except Exception as e:
+            print(f"[DEBUG HMAC] Exception during verify: {e}")
             return False
