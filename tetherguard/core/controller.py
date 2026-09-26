@@ -40,6 +40,14 @@ class GuardianController:
         # Callbacks for UI
         self.on_state_change: Optional[Callable[[GuardianState], None]] = None
         self.on_incident: Optional[Callable[[IncidentEvent], None]] = None
+        self.on_connection_change: Optional[Callable[[bool], None]] = None
+        
+        # Link relay connection state to controller
+        self.relay.on_connection_change = lambda s: self._notify_connection(s)
+
+    def _notify_connection(self, is_connected: bool):
+        if self.on_connection_change:
+            self.on_connection_change(is_connected)
 
     def start(self):
         # Generate keys if none exist
@@ -141,14 +149,41 @@ class GuardianController:
             except Exception as e:
                 print(f"Failed to send incident: {e}")
 
+    def _send_telemetry(self):
+        try:
+            import psutil
+            battery = psutil.sensors_battery()
+            battery_pct = battery.percent if battery else 100
+        except Exception:
+            battery_pct = 100
+
+        from datetime import datetime
+        payload = {
+            "type": "STATUS",
+            "device_id": self.config.device_id,
+            "guardian_state": self.mode.state.value,
+            "usb_monitoring": "usb" in self.config.enabled_detectors,
+            "input_monitoring": False,
+            "webcam_watch": self.config.evidence_capture_enabled,
+            "lid_sensor": False,
+            "workstation_locked": self.mode.state == GuardianState.TRIGGERED,
+            "battery_pct": battery_pct,
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+        self.relay.send_message(payload)
+
     def _sync_loop(self):
         while True:
-            if self.relay.is_connected and self.config.paired_device_public_key:
+            if self.relay.is_connected:
+                # 1. Send Live Telemetry
+                self._send_telemetry()
+                
+                # 2. Sync Unsent Incidents
                 unsent = self.db.get_unsent_incidents()
                 for incident in unsent:
                     payload = {"event": asdict(incident), "evidence": None} # Skip evidence for backlog?
                     self._send_to_relay(incident.incident_id, payload)
-            time.sleep(10)
+            time.sleep(5)
 
     def handle_command(self, data: dict):
         if data.get("type") != EventType.COMMAND.value:
@@ -157,30 +192,28 @@ class GuardianController:
         if data.get("device_id") != self.config.device_id:
             return
             
-        payload = data.get("payload", {})
+        # Android app sends fields directly at the root, not inside 'payload'
+        command = data.get("command", "")
+        request_id = data.get("request_id", "")
+        timestamp = data.get("timestamp", 0)
         signature = data.get("signature", "")
         
         # Verify
-        if not self.config.paired_device_public_key:
-            print("Received command but no paired device.")
-            return
-            
-        if not self.auth.verify_signature(payload, signature, self.config.paired_device_public_key):
+        if not self.auth.verify_command_signature(command, self.config.device_id, request_id, timestamp, signature):
             print("Invalid signature on command.")
             return
             
-        cmd = payload.get("command")
-        print(f"Authenticated command received: {cmd}")
+        print(f"Authenticated command received: {command}")
         
-        if cmd == "LOCK":
+        if command == "LOCK":
             self.lock_resp.execute()
-        elif cmd == "SHUTDOWN":
+        elif command == "SHUTDOWN":
             self.shutdown_resp.execute()
-        elif cmd == "GUARDIAN_ON":
+        elif command == "GUARDIAN_ON":
             self.arm()
-        elif cmd == "GUARDIAN_OFF":
+        elif command == "GUARDIAN_OFF":
             self.disarm()
-        elif cmd == "PING":
+        elif command == "PING":
             pass # Implement pong if needed
 
     def _notify_state(self):

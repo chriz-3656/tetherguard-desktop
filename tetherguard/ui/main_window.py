@@ -13,6 +13,7 @@ from tetherguard.pairing.qr import generate_pairing_qr
 class Signals(QObject):
     state_changed = Signal(GuardianState)
     incident_occurred = Signal(object)
+    connection_changed = Signal(bool)
 
 class DashboardTab(QWidget):
     def __init__(self, controller: GuardianController, signals: Signals):
@@ -93,11 +94,29 @@ class DashboardTab(QWidget):
         info_layout.addWidget(self.last_incident_label)
         layout.addWidget(self.info_panel)
         
+        # Sync Status
+        self.sync_label = QLabel("Sync: OFFLINE")
+        self.sync_label.setAlignment(Qt.AlignCenter)
+        self.sync_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #ff3333; margin-top: 10px;")
+        layout.addWidget(self.sync_label)
+        
         layout.addStretch()
         self.setLayout(layout)
         
         signals.state_changed.connect(self.update_state)
         signals.incident_occurred.connect(self.update_incident)
+        signals.connection_changed.connect(self.update_connection)
+        
+        # Initialize sync state based on controller
+        self.update_connection(self.controller.relay.is_connected)
+
+    def update_connection(self, is_connected: bool):
+        if is_connected:
+            self.sync_label.setText("Sync: CONNECTED")
+            self.sync_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #00ffcc; margin-top: 10px;")
+        else:
+            self.sync_label.setText("Sync: OFFLINE")
+            self.sync_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #ff3333; margin-top: 10px;")
 
     def update_state(self, state: GuardianState):
         if state == GuardianState.ACTIVE:
@@ -232,6 +251,7 @@ class MainWindow(QMainWindow):
         
         self.controller.on_state_change = lambda s: self.signals.state_changed.emit(s)
         self.controller.on_incident = lambda e: self.signals.incident_occurred.emit(e)
+        self.controller.on_connection_change = lambda c: self.signals.connection_changed.emit(c)
         
         tabs = QTabWidget()
         tabs.addTab(DashboardTab(controller, self.signals), "Dashboard")

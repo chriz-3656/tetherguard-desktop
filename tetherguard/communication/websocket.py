@@ -12,7 +12,14 @@ class RelayClient:
         self._loop = None
         self._thread = None
         self.on_command: Callable[[Dict[str, Any]], None] = None
+        self.on_connection_change: Callable[[bool], None] = None
         self._stop_event = asyncio.Event()
+
+    def _set_connected(self, state: bool):
+        if self.is_connected != state:
+            self.is_connected = state
+            if self.on_connection_change:
+                self.on_connection_change(state)
 
     def start(self):
         self._thread = Thread(target=self._run_loop, daemon=True)
@@ -34,7 +41,7 @@ class RelayClient:
             try:
                 async with websockets.connect(self.endpoint) as ws:
                     self.ws = ws
-                    self.is_connected = True
+                    self._set_connected(True)
                     print(f"Connected to relay: {self.endpoint}")
                     
                     while not self._stop_event.is_set():
@@ -65,12 +72,12 @@ class RelayClient:
                             break
             except Exception as e:
                 print(f"WebSocket connection error: {e}")
-                self.is_connected = False
+                self._set_connected(False)
                 
             if not self._stop_event.is_set():
                 await asyncio.sleep(5) # Reconnect delay
                 
-        self.is_connected = False
+        self._set_connected(False)
 
     def send_message(self, message: Dict[str, Any]):
         if self.ws and self.is_connected and self._loop:

@@ -23,14 +23,23 @@ class AuthManager:
         signature = hmac.new(self.shared_secret, message, hashlib.sha256).digest()
         return base64.b64encode(signature).decode('utf-8')
 
-    def verify_signature(self, payload: dict, signature_b64: str, peer_public_key_pem: str) -> bool:
-        # peer_public_key_pem is effectively the shared secret in this symmetric setup
+    def verify_signature(self, payload: dict, signature_b64: str) -> bool:
         try:
-            expected_secret = peer_public_key_pem.encode('utf-8')
             message = json.dumps(payload, sort_keys=True).encode('utf-8')
             signature = base64.b64decode(signature_b64)
             
-            expected_signature = hmac.new(expected_secret, message, hashlib.sha256).digest()
+            expected_signature = hmac.new(self.shared_secret, message, hashlib.sha256).digest()
+            return hmac.compare_digest(expected_signature, signature)
+        except Exception:
+            return False
+
+    def verify_command_signature(self, command: str, device_id: str, request_id: str, timestamp: int, signature_b64: str) -> bool:
+        """Verifies an incoming remote command using the Android app's specific string format."""
+        try:
+            payload_to_sign = f"{command}:{device_id}:{request_id}:{timestamp}".encode('utf-8')
+            # Android uses Base64.NO_WRAP to encode the signature
+            signature = base64.b64decode(signature_b64)
+            expected_signature = hmac.new(self.shared_secret, payload_to_sign, hashlib.sha256).digest()
             return hmac.compare_digest(expected_signature, signature)
         except Exception:
             return False
