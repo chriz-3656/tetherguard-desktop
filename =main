@@ -1,188 +1,68 @@
-import threading
-import time
+import sys
+import uuid
 from pathlib import Path
-from typing import Callable, Optional
-from dataclasses import asdict
+from PySide6.QtWidgets import QApplication
+from tetherguard.core.controller import GuardianController
+from tetherguard.ui.main_window import MainWindow
 
-from tetherguard.core.events import IncidentEvent, CommandEvent, EventType
-from tetherguard.core.config import TetherConfig
-from tetherguard.core.guardian import GuardianMode, GuardianState
-from tetherguard.storage.database import Database
-from tetherguard.communication.websocket import RelayClient
-from tetherguard.pairing.auth import AuthManager
-from tetherguard.responders.lock import LockResponder
-from tetherguard.responders.shutdown import ShutdownResponder
-from tetherguard.responders.camera import CameraResponder
-
-class GuardianController:
-    def __init__(self, config_path: Path, data_dir: Path):
-        self.config_path = config_path
-        self.data_dir = data_dir
-        self.config = TetherConfig.load(config_path)
+def main():
+    app = QApplication(sys.argv)
+    app.setApplicationName("TetherGuard")
+    
+    # Setup data dir
+    data_dir = Path.home() / ".tetherguard"
+    data_dir.mkdir(exist_ok=True)
+    
+    config_path = data_dir / "config.json"
+    
+    # Initialize controller
+    controller = GuardianController(config_path, data_dir)
+    
+    # Auto-detect local IP so the phone can connect (localhost won't work on the phone)
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
         
-        self.mode = GuardianMode()
-        self.db = Database(data_dir / "incidents.db")
-        # We now use the private_key_pem field to store the shared symmetric token
-        self.auth = AuthManager(self.config.private_key_pem)
-        
-        # Responders
-        self.lock_resp = LockResponder()
-        self.shutdown_resp = ShutdownResponder()
-        self.camera_resp = CameraResponder(data_dir / "evidence")
-        
-        # Communication
-        self.relay = RelayClient(self.config.relay_endpoint)
-        self.relay.on_command = self.handle_command
-        
-        # Detectors (initialized later)
-        self.detectors = []
-        
-        # Callbacks for UI
-        self.on_state_change: Optional[Callable[[GuardianState], None]] = None
-        self.on_incident: Optional[Callable[[IncidentEvent], None]] = None
+        # Update endpoint if it's still using localhost
+        if "localhost" in controller.config.relay_endpoint or "127.0.0.1" in controller.config.relay_endpoint:
+            controller.config.relay_endpoint = f"ws://{local_ip}:8080"
+    except Exception:
+        pass
 
-    def start(self):
-        # Generate keys if none exist
-        if not self.config.private_key_pem:
-            priv, pub = self.auth.generate_keys()
-            self.config.private_key_pem = priv
-            self.config.public_key_pem = pub
-            self.config.save(self.config_path)
-            
-        self.relay.start()
+    # Ensure device ID exists
+    if not controller.config.device_id:
+        controller.config.device_id = f"TG-{str(uuid.uuid4())[:8]}"
         
-        # Background thread to sync unsent incidents
-        threading.Thread(target=self._sync_loop, daemon=True).start()
+    # Save config (captures IP change or new ID)
+    controller.config.save(config_path)
+    
+    controller.start()
+    
+    window = MainWindow(controller)
+    window.show()
+    
+    # Mock some data for demo if requested via arguments
+    if "--demo" in sys.argv:
+        print("Running in demo mode - triggering simulated USB insert in 5 seconds")
+        from PySide6.QtCore import QTimer
+        from tetherguard.core.events import IncidentEvent, IncidentType, Severity
+        def sim_incident():
+            if controller.mode.state == getattr(controller.mode.state.__class__, "ACTIVE"):
+                ev = IncidentEvent(
+                    event=IncidentType.USB_INSERT.value,
+                    device_id=controller.config.device_id,
+                    severity=Severity.HIGH.value,
+                    metadata={"demo": True, "device_name": "Mock Evil USB"}
+                )
+                controller.handle_incident(ev)
+        QTimer.singleShot(5000, sim_incident)
+    
+    ret = app.exec()
+    controller.stop()
+    sys.exit(ret)
 
-    def stop(self):
-        self.disarm()
-        self.relay.stop()
-
-    def arm(self):
-        self.mode.arm()
-        self._notify_state()
-        
-        try:
-            self._start_detectors()
-            self.mode.activate()
-            self._notify_state()
-        except Exception as e:
-            print(f"Failed to arm: {e}")
-            self.mode.set_error()
-            self._notify_state()
-
-    def disarm(self):
-        self.mode.disarm()
-        self._notify_state()
-        
-        self._stop_detectors()
-        self.mode.turn_off()
-        self._notify_state()
-
-    def _start_detectors(self):
-        self.detectors.clear()
-        
-        if "usb" in self.config.enabled_detectors:
-            # We import here to avoid platform issues if missing
-            from tetherguard.detectors.usb import WindowsUSBDetector
-            detector = WindowsUSBDetector(self.config.device_id)
-            detector.set_callback(self.handle_incident)
-            detector.start()
-            self.detectors.append(detector)
-            
-        # Add input/filesystem detectors here as needed
-
-    def _stop_detectors(self):
-        for detector in self.detectors:
-            detector.stop()
-        self.detectors.clear()
-
-    def handle_incident(self, event: IncidentEvent):
-        # 1. Local incident record
-        self.db.save_incident(event)
-        
-        # Only respond if active
-        if self.mode.state == GuardianState.ACTIVE:
-            self.mode.trigger()
-            self._notify_state()
-            
-            # 2. Attempt evidence capture
-            evidence_b64 = None
-            if self.config.evidence_capture_enabled:
-                evidence_b64 = self.camera_resp.capture()
-                
-            # 3. Lock workstation immediately
-            self.lock_resp.execute()
-            
-            # 4. Enqueue to relay
-            payload = {
-                "event": asdict(event),
-                "evidence": evidence_b64
-            }
-            # Wait for sync loop to send it, or send immediately
-            self._send_to_relay(event.incident_id, payload)
-            
-        if self.on_incident:
-            self.on_incident(event)
-
-    def _send_to_relay(self, incident_id: str, payload: dict):
-        if self.relay.is_connected and self.config.paired_device_public_key:
-            try:
-                # Add signature
-                sig = self.auth.sign_payload(payload)
-                message = {
-                    "type": EventType.INCIDENT.value,
-                    "device_id": self.config.device_id,
-                    "payload": payload,
-                    "signature": sig
-                }
-                self.relay.send_message(message)
-                self.db.mark_sent(incident_id)
-            except Exception as e:
-                print(f"Failed to send incident: {e}")
-
-    def _sync_loop(self):
-        while True:
-            if self.relay.is_connected and self.config.paired_device_public_key:
-                unsent = self.db.get_unsent_incidents()
-                for incident in unsent:
-                    payload = {"event": asdict(incident), "evidence": None} # Skip evidence for backlog?
-                    self._send_to_relay(incident.incident_id, payload)
-            time.sleep(10)
-
-    def handle_command(self, data: dict):
-        if data.get("type") != EventType.COMMAND.value:
-            return
-            
-        if data.get("device_id") != self.config.device_id:
-            return
-            
-        payload = data.get("payload", {})
-        signature = data.get("signature", "")
-        
-        # Verify
-        if not self.config.paired_device_public_key:
-            print("Received command but no paired device.")
-            return
-            
-        if not self.auth.verify_signature(payload, signature, self.config.paired_device_public_key):
-            print("Invalid signature on command.")
-            return
-            
-        cmd = payload.get("command")
-        print(f"Authenticated command received: {cmd}")
-        
-        if cmd == "LOCK":
-            self.lock_resp.execute()
-        elif cmd == "SHUTDOWN":
-            self.shutdown_resp.execute()
-        elif cmd == "GUARDIAN_ON":
-            self.arm()
-        elif cmd == "GUARDIAN_OFF":
-            self.disarm()
-        elif cmd == "PING":
-            pass # Implement pong if needed
-
-    def _notify_state(self):
-        if self.on_state_change:
-            self.on_state_change(self.mode.state)
+if __name__ == "__main__":
+    main()
