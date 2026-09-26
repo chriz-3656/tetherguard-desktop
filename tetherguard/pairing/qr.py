@@ -7,13 +7,9 @@ def generate_pairing_qr(device_id: str, public_key_pem: str, relay_endpoint: str
     """
     Generates a QR code for pairing containing bootstrap data.
     """
-    payload = {
-        "device_id": device_id,
-        "public_key": base64.b64encode(public_key_pem.encode('utf-8')).decode('utf-8'),
-        "relay_endpoint": relay_endpoint
-    }
-    
-    data = json.dumps(payload)
+    # Use the tetherguard:// URI format which is cleaner and natively supported by the Android app
+    # It also produces a less dense QR code making it easier for the camera to scan
+    data = f"tetherguard://pair?device_id={device_id}&relay={relay_endpoint}&token={public_key_pem}"
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_L,
