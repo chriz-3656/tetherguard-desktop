@@ -50,3 +50,27 @@ A partial implementation for Linux exists in the responder logic (`systemctl pow
 To fully support Linux:
 1. Implement a `LinuxUSBDetector` in `detectors/usb.py` using `pyudev`.
 2. Enhance `responders/lock.py` to handle different desktop environments (GNOME, KDE) appropriately.
+
+## ?? Hackathon Challenges & Solutions
+
+During the hackathon, we encountered and solved several complex networking and cryptographic challenges:
+
+1. **Robust QR Pairing (URI Scheme vs JSON):** 
+   - *Challenge:* The Android ZXing barcode scanner struggled to reliably decode raw, dense JSON strings off a laptop screen, especially under glare.
+   - *Solution:* We migrated from JSON to a custom 	etherguard://pair?... URI scheme. This drastically reduced the QR code density, making camera pairing instantaneous, and allowed native Android URI parsing.
+
+2. **Windows Firewall Network Blocking:**
+   - *Challenge:* While the desktop agent connected to the relay server fine on localhost, the Android phone timed out when attempting to connect over the local Wi-Fi. Windows Firewall silently dropped all inbound port 8080 traffic.
+   - *Solution:* We decoupled the IP logic. The Desktop Agent natively connects to localhost to bypass the firewall entirely, while dynamically injecting the laptop's external Wi-Fi IP (192.168.x.x) strictly into the QR code. We also built an Administrator ix_firewall.bat script to punch a secure hole for the phone's inbound WebSocket traffic.
+
+3. **Android Cleartext Traffic Block (OS 9+):**
+   - *Challenge:* Modern Android OS silently blocks all unencrypted ws:// traffic by default, expecting wss://. This made local Wi-Fi testing impossible.
+   - *Solution:* We modified the AndroidManifest.xml to explicitly include ndroid:usesCleartextTraffic="true", allowing seamless peer-to-peer Wi-Fi WebSocket connections without needing a live HTTPS cloud relay for the demo.
+
+4. **Cryptographic Key Mismatch (Asymmetric vs Symmetric):**
+   - *Challenge:* The system experienced silent HMAC signature mismatches. The Python desktop agent was inadvertently loading an old RSA Private Key from disk, while the Android phone was hashing with the RSA Public Key from the QR code.
+   - *Solution:* We wiped the legacy RSA system and implemented a unified, lightning-fast 32-byte symmetric HMAC-SHA256 token system. Both devices now hash the payload (COMMAND:DEVICE_ID:REQUEST_ID:TIMESTAMP) using the exact same symmetric secret, ensuring mathematical perfection.
+
+5. **Presentation Safe Mode (PySide6 vs Background Threads):**
+   - *Challenge:* We needed a way to demonstrate the SHUTDOWN command without actually shutting off the presentation laptop. Attempting to draw a PySide6 GUI warning from a background network thread caused hard crashes due to Qt thread-safety violations.
+   - *Solution:* We implemented a native Windows ctypes.windll.user32.MessageBoxW alert in a daemon thread. This perfectly simulates the shutdown intercept with a dramatic, system-modal error dialog that is 100% thread-safe and presentation-friendly.
