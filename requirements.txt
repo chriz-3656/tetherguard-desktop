@@ -1,0 +1,9 @@
+PySide6>=6.5.0
+opencv-python>=4.8.0
+cryptography>=41.0.0
+websockets>=11.0.3
+watchdog>=3.0.0
+qrcode>=7.4.2
+Pillow>=10.0.0
+wmi>=1.5.1; sys_platform == 'win32'
+pywin32>=306; sys_platform == 'win32'
