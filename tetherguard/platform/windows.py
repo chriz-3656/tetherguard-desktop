@@ -19,8 +19,9 @@ class WindowsAdapter:
         print(f"SAFE MODE: Displayed {action_name} native alert instead of actual system execution.")
 
     def lock_workstation(self):
-        # Replaced actual ctypes.windll.user32.LockWorkStation() with Safe Mode UI
-        self._show_safe_mode_alert("LOCK")
+        import ctypes
+        print("Executing actual workstation lock...")
+        ctypes.windll.user32.LockWorkStation()
 
     def shutdown(self):
         # Replaced actual os.system("shutdown /s /t 1") with Safe Mode UI
