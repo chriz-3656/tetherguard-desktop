@@ -42,7 +42,7 @@ class InputDetector(BaseDetector):
     def _trigger_alert(self, key_str):
         if self.callback:
             event = IncidentEvent(
-                event=IncidentType.INPUT_ACTIVITY.value,
+                event=IncidentType.INPUT_ATTEMPT.value,
                 device_id=self.device_id,
                 severity=Severity.HIGH.value,
                 metadata={
