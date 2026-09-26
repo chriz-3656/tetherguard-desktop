@@ -1,34 +1,22 @@
 class WindowsAdapter:
     def _show_safe_mode_alert(self, action_name):
-        from PySide6.QtWidgets import QApplication, QLabel
-        from PySide6.QtCore import Qt
-        from PySide6.QtGui import QFont
+        import ctypes
+        import threading
         
-        app = QApplication.instance()
-        if not app:
-            print(f"SAFE MODE: Prevented actual {action_name}")
-            return
+        text = f"SECURITY BREACH DETECTED\n\nSYSTEM {action_name} INITIATED\n\n(Hackathon Safe Mode - Actual OS execution prevented)"
+        title = f"TetherGuard - {action_name}"
+        
+        # 0x10 = MB_ICONERROR (Red X)
+        # 0x40000 = MB_TOPMOST (Stays on top of all windows)
+        # 0x1000 = MB_SYSTEMMODAL
+        flags = 0x10 | 0x40000 | 0x1000
+        
+        # Run in a separate daemon thread so it doesn't block the WebSocket connection loop!
+        def show_msg():
+            ctypes.windll.user32.MessageBoxW(0, text, title, flags)
             
-        alert = QLabel(f"SECURITY BREACH DETECTED\n\nSYSTEM {action_name} INITIATED\n\n(Click anywhere to dismiss - Hackathon Safe Mode)")
-        alert.setAlignment(Qt.AlignCenter)
-        alert.setStyleSheet("background-color: #8c1c13; color: white; font-weight: bold; font-family: monospace;")
-        alert.setFont(QFont("Courier", 24, QFont.Bold))
-        alert.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Tool)
-        
-        # Make it full screen
-        screen = app.primaryScreen().geometry()
-        alert.setGeometry(screen)
-        
-        # Close on click
-        alert.mousePressEvent = lambda e: alert.close()
-        
-        alert.show()
-        
-        # Keep a reference so it doesn't get garbage collected
-        if not hasattr(app, 'alerts'):
-            app.alerts = []
-        app.alerts.append(alert)
-        print(f"SAFE MODE: Displayed {action_name} alert instead of actual system execution.")
+        threading.Thread(target=show_msg, daemon=True).start()
+        print(f"SAFE MODE: Displayed {action_name} native alert instead of actual system execution.")
 
     def lock_workstation(self):
         # Replaced actual ctypes.windll.user32.LockWorkStation() with Safe Mode UI
